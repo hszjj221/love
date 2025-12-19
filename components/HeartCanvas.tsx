@@ -7,7 +7,6 @@ interface Particle {
   originY: number;
   size: number;
   color: string;
-  velocity: number;
   angle: number;
 }
 
@@ -109,13 +108,12 @@ export const HeartCanvas: React.FC = () => {
         else color = '#8b0000'; // Dark red for depth
 
         particles.push({
-          x: originX, // Initial spawn at center (will fly out)
+          x: originX,
           y: originY,
           originX,
           originY,
           size: random(1, isMobile ? 2 : 3),
           color,
-          velocity: random(0.5, 2),
           angle: random(0, Math.PI * 2),
         });
       }
@@ -187,10 +185,10 @@ export const HeartCanvas: React.FC = () => {
         }
 
         // Add intrinsic vibration/noise for "alive" feeling
-        const vibration = Math.sin(timeRef.current * 3 + p.angle);
+        const vibration = Math.sin(timeRef.current * 3 + p.angle) * 2;
         
-        const finalTargetX = targetX + dx;
-        const finalTargetY = targetY + dy;
+        const finalTargetX = targetX + dx + vibration;
+        const finalTargetY = targetY + dy + vibration;
 
         // Physics: Interpolate current position to target position
         // "Ease out" effect
