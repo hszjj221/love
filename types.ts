@@ -13,6 +13,7 @@ export interface ParticleConfig {
   theme: Theme;
   text?: string;
   imageUrl?: string;
+  vibrationIntensity?: number;
 }
 
 export interface Particle {

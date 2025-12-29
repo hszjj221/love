@@ -10,6 +10,7 @@ const App: React.FC = () => {
     mode: 'heart',
     theme: THEMES[0],
     text: 'LOVE',
+    vibrationIntensity: 1,
   });
 
   // Update background color when theme changes

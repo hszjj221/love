@@ -64,7 +64,6 @@ export const HeartCanvas: React.FC<HeartCanvasProps> = ({ config }) => {
     ) {
       regenerateParticles();
     }
-     
   }, [config, regenerateParticles]);
 
   useEffect(() => {
@@ -127,10 +126,11 @@ export const HeartCanvas: React.FC<HeartCanvasProps> = ({ config }) => {
       const cx = width / 2;
       const cy = height / 2;
 
-      // Heartbeat Logic
+      // Heartbeat Logic - use config intensity
       timeRef.current += 0.04;
-      const beat = 0.15 * Math.pow(Math.sin(timeRef.current), 50);
-      const breath = 0.05 * Math.sin(timeRef.current * 2);
+      const intensity = configRef.current.vibrationIntensity ?? 1;
+      const beat = 0.15 * intensity * Math.pow(Math.sin(timeRef.current), 50);
+      const breath = 0.05 * intensity * Math.sin(timeRef.current * 2);
       const scaleMultiplier = 1 + beat + breath;
 
       // Smooth force ramp up/down
@@ -166,10 +166,8 @@ export const HeartCanvas: React.FC<HeartCanvasProps> = ({ config }) => {
           }
         }
 
-        // Add vibration for "alive" feeling
-        const vibration = Math.sin(timeRef.current * 3 + p.angle) * 2;
-        const finalTargetX = targetX + dx + vibration;
-        const finalTargetY = targetY + dy + vibration;
+        const finalTargetX = targetX + dx;
+        const finalTargetY = targetY + dy;
 
         // Physics: ease out interpolation
         p.x += (finalTargetX - p.x) * 0.15;

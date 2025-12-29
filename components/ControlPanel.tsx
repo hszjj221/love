@@ -9,7 +9,7 @@ interface ControlPanelProps {
 
 export const ControlPanel: React.FC<ControlPanelProps> = ({ config, onConfigChange }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'mode' | 'theme'>('mode');
+  const [activeTab, setActiveTab] = useState<'mode' | 'theme' | 'effect'>('mode');
   const [inputText, setInputText] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -41,6 +41,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({ config, onConfigChan
     if (config.mode === 'text') {
       onConfigChange({ ...config, text: text || 'LOVE' });
     }
+  };
+
+  const handleVibrationChange = (value: number) => {
+    onConfigChange({ ...config, vibrationIntensity: value });
   };
 
   return (
@@ -99,6 +103,16 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({ config, onConfigChan
             }`}
           >
             主题 Theme
+          </button>
+          <button
+            onClick={() => setActiveTab('effect')}
+            className={`flex-1 py-3 text-sm font-medium transition-colors ${
+              activeTab === 'effect'
+                ? 'text-pink-400 border-b-2 border-pink-400'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            效果 FX
           </button>
         </div>
 
@@ -170,7 +184,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({ config, onConfigChan
                 </div>
               )}
             </div>
-          ) : (
+          ) : activeTab === 'theme' ? (
             <div>
               <label className="text-xs text-gray-400 mb-2 block">颜色主题</label>
               <div className="grid grid-cols-2 gap-2">
@@ -200,6 +214,32 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({ config, onConfigChan
                     </div>
                   </button>
                 ))}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Vibration Intensity */}
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-xs text-gray-400">呼吸效果</label>
+                  <span className="text-xs text-pink-400">
+                    {Math.round((config.vibrationIntensity ?? 1) * 100)}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="2"
+                  step="0.1"
+                  value={config.vibrationIntensity ?? 1}
+                  onChange={(e) => handleVibrationChange(parseFloat(e.target.value))}
+                  className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-pink-500"
+                />
+                <div className="flex justify-between text-[10px] text-gray-500 mt-1">
+                  <span>静止</span>
+                  <span>正常</span>
+                  <span>强烈</span>
+                </div>
               </div>
             </div>
           )}
