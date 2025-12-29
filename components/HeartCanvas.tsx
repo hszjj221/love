@@ -1,40 +1,28 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
+import { Particle, ParticleConfig } from '../types';
+import { generateParticles } from '../utils/particleGenerator';
 
-interface Particle {
-  x: number;
-  y: number;
-  originX: number;
-  originY: number;
-  size: number;
-  color: string;
-  angle: number;
+interface HeartCanvasProps {
+  config: ParticleConfig;
 }
 
-// Helper to generate a random number in range
-const random = (min: number, max: number) => Math.random() * (max - min) + min;
+// Helper function to convert hex to RGB
+function hexToRgb(hex: string): string {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result
+    ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}`
+    : '0, 0, 0';
+}
 
-// The Heart Curve Equation
-// x = 16 sin^3(t)
-// y = 13 cos(t) - 5 cos(2t) - 2 cos(3t) - cos(4t)
-const getHeartPosition = (t: number, scale: number) => {
-  const x = 16 * Math.pow(Math.sin(t), 3);
-  const y = -(
-    13 * Math.cos(t) -
-    5 * Math.cos(2 * t) -
-    2 * Math.cos(3 * t) -
-    Math.cos(4 * t)
-  );
-  return { x: x * scale, y: y * scale };
-};
-
-export const HeartCanvas: React.FC = () => {
+export const HeartCanvas: React.FC<HeartCanvasProps> = ({ config }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const particlesRef = useRef<Particle[]>([]);
   const animationFrameRef = useRef<number>();
   const timeRef = useRef<number>(0);
-  
-  // Interaction state
-  // Using a ref to store mutable state without triggering re-renders
+  const isAnimatingRef = useRef<boolean>(true);
+  const configRef = useRef(config);
+
+  // Interaction state - using ref to avoid triggering re-renders
   const mouseRef = useRef<{ x: number; y: number; active: boolean; force: number }>({
     x: 0,
     y: 0,
@@ -42,89 +30,98 @@ export const HeartCanvas: React.FC = () => {
     force: 0,
   });
 
+  // Create regenerateParticles function with useCallback
+  const regenerateParticles = useCallback(async () => {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    const newParticles = await generateParticles(configRef.current.mode, {
+      text: configRef.current.text,
+      imageUrl: configRef.current.imageUrl,
+      width,
+      height,
+      colors: configRef.current.theme.colors,
+    });
+
+    particlesRef.current = newParticles;
+  }, []);
+
+  // Update config ref when props change
+  useEffect(() => {
+    const previousMode = configRef.current.mode;
+    const previousTheme = configRef.current.theme.id;
+    const previousText = configRef.current.text;
+    const previousImageUrl = configRef.current.imageUrl;
+
+    configRef.current = config;
+
+    // Regenerate particles if mode, theme, text, or image changed
+    if (
+      previousMode !== config.mode ||
+      previousTheme !== config.theme.id ||
+      previousText !== config.text ||
+      previousImageUrl !== config.imageUrl
+    ) {
+      regenerateParticles();
+    }
+     
+  }, [config, regenerateParticles]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const ctx = canvas.getContext('2d', { alpha: false }); // Optimize for no transparency on base
+    const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) return;
 
     let width = window.innerWidth;
     let height = window.innerHeight;
     let dpr = window.devicePixelRatio || 1;
+    const INTERACTION_RADIUS = 180;
+    const INTERACTION_RADIUS_SQUARED = INTERACTION_RADIUS * INTERACTION_RADIUS;
+    const FORCE_THRESHOLD = 0.01;
 
-    // Initialize Canvas Size with DPR for crisp text/shapes on mobile
-    const resizeCanvas = () => {
+    // Initial setup
+    const setupCanvas = () => {
       width = window.innerWidth;
       height = window.innerHeight;
       canvas.width = width * dpr;
       canvas.height = height * dpr;
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
-      
-      // Scale context to match DPR
       ctx.scale(dpr, dpr);
-      
-      initParticles();
     };
 
-    // Initialize Particles
-    const initParticles = () => {
-      const particles: Particle[] = [];
-      // Adjust particle count based on screen size for performance
-      const isMobile = width < 768;
-      const particleCount = isMobile ? 800 : 2000;
-      
-      // Scale heart based on screen min dimension
-      // Slightly larger on mobile relative to screen width to fill space
-      const heartScale = Math.min(width, height) / (isMobile ? 35 : 45); 
+    // Debounced resize handler
+    let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
+    const resizeCanvas = () => {
+      if (resizeTimeout) clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        setupCanvas();
+        regenerateParticles();
+      }, 150);
+    };
 
-      for (let i = 0; i < particleCount; i++) {
-        // Distribute points along the heart curve
-        const t = Math.random() * Math.PI * 2;
-        
-        // Jitter helps make the heart look "fuzzy" and full
-        // 1.0 is the edge, < 1.0 is inside
-        // We want a dense edge and a sparse interior
-        let dr = random(0.6, 1.2); 
-        
-        // Concentrate more particles near the edge (dr ~ 1)
-        if (Math.random() < 0.6) {
-           dr = random(0.9, 1.1);
+    // Handle page visibility - pause animation when tab is hidden
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        isAnimatingRef.current = false;
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
         }
-
-        const pos = getHeartPosition(t, heartScale * dr);
-        
-        const originX = pos.x;
-        const originY = pos.y;
-
-        // Colors
-        // 60% Red (#ff0000), 30% Pink (#ff5ca8), 10% White (#ffffff)
-        const shade = Math.random();
-        let color = '#ea4c89'; // Default pinkish red
-        if (shade > 0.9) color = '#ffffff'; // Sparkle
-        else if (shade > 0.6) color = '#ff99cc'; // Light pink
-        else if (shade > 0.3) color = '#ff0000'; // Deep red
-        else color = '#8b0000'; // Dark red for depth
-
-        particles.push({
-          x: originX,
-          y: originY,
-          originX,
-          originY,
-          size: random(1, isMobile ? 2 : 3),
-          color,
-          angle: random(0, Math.PI * 2),
-        });
+      } else {
+        isAnimatingRef.current = true;
+        render();
       }
-      particlesRef.current = particles;
     };
 
     // Animation Loop
     const render = () => {
-      // Clear with trail effect
-      // Use fillRect with low opacity to create trails
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+      if (!isAnimatingRef.current) return;
+
+      // Clear with trail effect - use theme background color
+      const bgColor = configRef.current.theme.bgColor || '#000000';
+      ctx.fillStyle = `rgba(${hexToRgb(bgColor)}, 0.1)`;
       ctx.fillRect(0, 0, width, height);
 
       const cx = width / 2;
@@ -132,75 +129,72 @@ export const HeartCanvas: React.FC = () => {
 
       // Heartbeat Logic
       timeRef.current += 0.04;
-      
-      // Heartbeat function: fast expansion, slow contraction
-      // Math.pow(Math.sin(t), 30) creates a sharp "lub-dub" spike
-      const beat = 0.15 * Math.pow(Math.sin(timeRef.current), 50); 
-      // Secondary smooth breathing
+      const beat = 0.15 * Math.pow(Math.sin(timeRef.current), 50);
       const breath = 0.05 * Math.sin(timeRef.current * 2);
-      
       const scaleMultiplier = 1 + beat + breath;
 
-      // Mouse Interaction Force Smoothing
-      // Smoothly ramp up/down the interaction force
+      // Smooth force ramp up/down
       if (mouseRef.current.active) {
         mouseRef.current.force += (1 - mouseRef.current.force) * 0.1;
       } else {
         mouseRef.current.force += (0 - mouseRef.current.force) * 0.1;
       }
 
+      // Update particle positions
       particlesRef.current.forEach((p) => {
-        // Calculate Target Position (The Heart Shape)
-        // We apply the beat scale to the origin coordinates
         const targetX = cx + p.originX * scaleMultiplier;
         const targetY = cy + p.originY * scaleMultiplier;
 
-        // Particle Interaction Logic
         let dx = 0;
         let dy = 0;
 
-        // If mouse/touch is active (or force is still fading out)
-        if (mouseRef.current.force > 0.01) {
+        // Mouse interaction - use squared distance to avoid sqrt when possible
+        if (mouseRef.current.force > FORCE_THRESHOLD) {
           const mx = mouseRef.current.x;
           const my = mouseRef.current.y;
-          
           const distX = targetX - mx;
           const distY = targetY - my;
-          const dist = Math.sqrt(distX * distX + distY * distY);
-          
-          // Interaction Radius
-          const radius = 180; 
-          
-          if (dist < radius) {
-            // Calculate repulsion
-            // The closer the mouse, the stronger the push
+          const distSquared = distX * distX + distY * distY;
+
+          if (distSquared < INTERACTION_RADIUS_SQUARED) {
+            const dist = Math.sqrt(distSquared);
             const angle = Math.atan2(distY, distX);
-            const force = (radius - dist) / radius; // 0 to 1
-            
-            // Push away
+            const force = (INTERACTION_RADIUS - dist) / INTERACTION_RADIUS;
             const push = force * 150 * mouseRef.current.force;
             dx = Math.cos(angle) * push;
             dy = Math.sin(angle) * push;
           }
         }
 
-        // Add intrinsic vibration/noise for "alive" feeling
+        // Add vibration for "alive" feeling
         const vibration = Math.sin(timeRef.current * 3 + p.angle) * 2;
-        
         const finalTargetX = targetX + dx + vibration;
         const finalTargetY = targetY + dy + vibration;
 
-        // Physics: Interpolate current position to target position
-        // "Ease out" effect
+        // Physics: ease out interpolation
         p.x += (finalTargetX - p.x) * 0.15;
         p.y += (finalTargetY - p.y) * 0.15;
+      });
 
-        // Draw Particle
-        ctx.beginPath();
-        // Adjust size slightly based on beat for pulsing effect
+      // Batch draw particles by color for better performance
+      const particlesByColor = new Map<string, Array<{ x: number; y: number; size: number }>>();
+
+      particlesRef.current.forEach((p) => {
         const currentSize = p.size * scaleMultiplier;
-        ctx.arc(p.x, p.y, currentSize, 0, Math.PI * 2);
-        ctx.fillStyle = p.color;
+        if (!particlesByColor.has(p.color)) {
+          particlesByColor.set(p.color, []);
+        }
+        particlesByColor.get(p.color)!.push({ x: p.x, y: p.y, size: currentSize });
+      });
+
+      // Draw particles grouped by color
+      particlesByColor.forEach((particles, color) => {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        particles.forEach((p) => {
+          ctx.moveTo(p.x + p.size, p.y);
+          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        });
         ctx.fill();
       });
 
@@ -236,35 +230,37 @@ export const HeartCanvas: React.FC = () => {
 
     // Attach Events
     window.addEventListener('resize', resizeCanvas);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mousedown', handleMouseMove);
     window.addEventListener('mouseup', handleEnd);
-    
-    // Passive false is important for some touch interactions, 
-    // though here we don't preventDefault globally to avoid breaking browser UI unless needed
     window.addEventListener('touchmove', handleTouchMove, { passive: false });
     window.addEventListener('touchstart', handleTouchStart, { passive: false });
     window.addEventListener('touchend', handleEnd);
 
     // Initial Start
-    resizeCanvas();
-    render();
+    setupCanvas();
+    regenerateParticles().then(() => {
+      render();
+    });
 
     // Cleanup
     return () => {
+      if (resizeTimeout) clearTimeout(resizeTimeout);
       window.removeEventListener('resize', resizeCanvas);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mousedown', handleMouseMove);
       window.removeEventListener('mouseup', handleEnd);
       window.removeEventListener('touchmove', handleTouchMove);
       window.removeEventListener('touchstart', handleTouchStart);
       window.removeEventListener('touchend', handleEnd);
-      
+
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, []);
+  }, [regenerateParticles]);
 
   return <canvas ref={canvasRef} className="block w-full h-full" />;
 };
